@@ -1,0 +1,58 @@
+[
+  {
+    "id": "amadeus",
+    "label": "Amadeus",
+    "kind": "api",
+    "regions": ["global"],
+    "priority": 0,
+    "url_template": ""
+  },
+  {
+    "id": "kayak",
+    "label": "Kayak",
+    "kind": "deeplink",
+    "regions": ["global", "vn"],
+    "priority": 10,
+    "url_template": "https://www.kayak.com/flights/{origin}-{destination}/{date}?sort=price_a&currency=VND"
+  },
+  {
+    "id": "google_flights",
+    "label": "Google Flights",
+    "kind": "deeplink",
+    "regions": ["global"],
+    "priority": 20,
+    "url_template": "https://www.google.com/travel/flights?hl=en#flt={origin}.{destination}.{date}"
+  },
+  {
+    "id": "skyscanner",
+    "label": "Skyscanner",
+    "kind": "deeplink",
+    "regions": ["global"],
+    "priority": 30,
+    "url_template": "https://www.skyscanner.com/transport/flights/{origin}/{destination}/{date}/?adultsv2=1&cabinclass=economy&inboundaltsenabled=false&outboundaltsenabled=false&preferdirects=false&roundtrip=false"
+  },
+  {
+    "id": "traveloka",
+    "label": "Traveloka",
+    "kind": "deeplink",
+    "regions": ["vn"],
+    "priority": 40,
+    "url_template": "https://www.traveloka.com/en-vn/flight/fullsearch?ap={origin}.{destination}&dt={date}.NA&ps=1.0.0&sc=ECONOMY"
+  },
+  {
+    "id": "baydep",
+    "label": "BayDep",
+    "kind": "deeplink",
+    "regions": ["vn"],
+    "priority": 50,
+    "url_template": "https://baydep.vn/ve-may-bay/{origin}-{destination}?date={date}"
+  },
+  {
+    "id": "vietjet",
+    "label": "Vietjet",
+    "kind": "deeplink",
+    "regions": ["vn"],
+    "priority": 60,
+    "url_template": "https://www.vietjetair.com/en?origin={origin}&destination={destination}&departDate={date}"
+  }
+]
