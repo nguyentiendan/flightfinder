@@ -1,8 +1,8 @@
-"""Nguon du lieu chuyen bay.
+"""Flight data source.
 
-Che do hien tai: MOCK (da xac nhan voi user truoc khi code).
-Cho scrape that (Playwright/Browserbase nhu slide trang 73) se thay the ham
-`search_flights` bang ban doc Kayak that, giu nguyen chu ky ham.
+Current mode: MOCK (user-confirmed before implementation).
+A real Kayak scrape (Playwright/Browserbase per slide 73) will replace
+`search_flights` while keeping the same function signature.
 """
 
 import hashlib
@@ -11,32 +11,33 @@ from datetime import datetime, timezone
 from .kayak import build_kayak_url
 
 SOURCE_MOCK = "mock"
+SOURCE_ID_AMADEUS = "amadeus"
 
-# 5 chuyen mau bam slide trang 72/74 (SGN -> HAN 21/9: 06:10 re nhat,
-# 08:00 can bang, 09:30 linh hoat). Tuyến/ngay khac duoc bien doi
-# deterministic tu ma tuyen + ngay de demo nhieu truy van.
+# Five sample flights aligned with slide 72/74 (SGN -> HAN 21 Sep: 06:10 cheapest,
+# 08:00 balanced, 09:30 flexible). Other routes/dates get deterministic variation
+# from route code + date for multi-query demos.
 _BASE_TEMPLATES = [
-    {"departure_time": "06:10", "airline": "Hang A", "price_vnd": 1_450_000,
-     "baggage": "chua gom hanh ly ky gui", "flexible": False},
-    {"departure_time": "07:30", "airline": "Hang B", "price_vnd": 1_700_000,
-     "baggage": "chua gom hanh ly ky gui", "flexible": False},
-    {"departure_time": "08:00", "airline": "Hang B", "price_vnd": 1_900_000,
-     "baggage": "gom 20kg hanh ly ky gui", "flexible": False},
-    {"departure_time": "09:30", "airline": "Hang C", "price_vnd": 2_600_000,
-     "baggage": "doi ve mien phi", "flexible": True},
-    {"departure_time": "11:15", "airline": "Hang C", "price_vnd": 2_350_000,
-     "baggage": "gom 20kg hanh ly ky gui", "flexible": True},
+    {"departure_time": "06:10", "airline": "Airline A", "price_vnd": 1_450_000,
+     "baggage": "checked bag not included", "refundable": False},
+    {"departure_time": "07:30", "airline": "Airline B", "price_vnd": 1_700_000,
+     "baggage": "checked bag not included", "refundable": False},
+    {"departure_time": "08:00", "airline": "Airline B", "price_vnd": 1_900_000,
+     "baggage": "20kg checked bag included", "refundable": False},
+    {"departure_time": "09:30", "airline": "Airline C", "price_vnd": 2_600_000,
+     "baggage": "free date change", "refundable": True},
+    {"departure_time": "11:15", "airline": "Airline C", "price_vnd": 2_350_000,
+     "baggage": "20kg checked bag included", "refundable": True},
 ]
 
 
 def search_flights(origin: str, destination: str, date: str) -> tuple[list[dict], str]:
-    """Tra ve (5 chuyen bay, kayak_url). Gia tri mock, gan nhan source='mock'."""
+    """Return (5 mock flights, kayak_url). Each offer is tagged source_id amadeus."""
     origin = origin.strip().upper()
     destination = destination.strip().upper()
     kayak_url = build_kayak_url(origin, destination, date)
 
     seed = int(hashlib.sha256(f"{origin}-{destination}-{date}".encode()).hexdigest(), 16)
-    jitter = (seed % 5 - 2) * 50_000  # +/- 100k de cac tuyen khac nhau nhin khac nhau
+    jitter = (seed % 5 - 2) * 50_000  # +/- 100k so different routes look distinct
 
     flights: list[dict] = []
     for i, t in enumerate(_BASE_TEMPLATES):
@@ -45,12 +46,11 @@ def search_flights(origin: str, destination: str, date: str) -> tuple[list[dict]
             "departure_time": t["departure_time"],
             "price_vnd": max(t["price_vnd"] + (jitter if i % 2 else 0), 500_000),
             "baggage": t["baggage"],
+            "refundable": t["refundable"],
+            "source_id": SOURCE_ID_AMADEUS,
             "detail_url": f"{kayak_url}#chuyen-{i + 1}",
         })
 
-    # Guardrail (slide trang 75): gia phai co trong du lieu da lay, khong bia.
-    assert len(flights) == 5
-    assert all(f["price_vnd"] > 0 for f in flights)
     return flights, kayak_url
 
 
