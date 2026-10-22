@@ -1,13 +1,13 @@
-"""Kayak Tool: tao URL tim kiem (bam slide trang 72, kayak_tool.py)."""
+"""Build Kayak flight-search URLs (deeplink template; see sources catalog)."""
 
-from . import flight_data  # noqa: F401  (giữ package tools rõ ràng)
+from . import flight_data  # noqa: F401  (keeps the tools package explicit)
 
 
 def build_kayak_url(departure: str, destination: str, date: str, currency: str = "VND") -> str:
-    """Tao URL tim chuyen bay tren Kayak.
+    """Return a Kayak search URL for one-way economy.
 
-    departure, destination: ma san bay (SGN, HAN)
-    date: dinh dang YYYY-MM-DD
+    ``departure`` / ``destination``: IATA codes (e.g. SGN, HAN).
+    ``date``: YYYY-MM-DD.
     """
     dep = departure.strip().upper()
     dest = destination.strip().upper()

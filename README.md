@@ -1,56 +1,86 @@
 # Multi-agent Flight Finder
 
-Bám slide **AI_Agents_Cam_nang_minh_hoa_2026_CyberSoft.pdf, trang 72–75**
-(Dự án 3 · Multi-Agent · Planning · Cấp độ 4).
+A **supervisor + parallel scout** flight search demo built with FastAPI, LangGraph, and Next.js. It accepts IATA form fields and/or natural-language chat (Vietnamese or English), plans which data sources to use, fetches structured offers from Amadeus (or a same-schema mock), builds OTA deeplinks without scraping, and returns three labeled picks: **Cheapest**, **Balanced**, and **Flexible**.
 
-Luồng đúng slide: câu hỏi tự nhiên → Kayak Tool tạo URL → Flight Search Agent
-lấy top 5 chuyến → Browserbase đọc chi tiết từng chuyến → Summarization Agent
-đề xuất 3 lựa chọn (Rẻ nhất / Cân bằng / Linh hoạt).
+**Homework context:** The original CyberSoft slide deck (*AI_Agents_Cam_nang_minh_hoa_2026*, Project 3, pages 72–75) describes a linear CrewAI flow with Kayak scraping and Browserbase. This repository implements the same *user-facing* goals (planning, progress streaming, verify-on-OTA links, guardrails) with the architecture below.
 
-## Khác slide ở tech stack (đã thống nhất với user)
+## Architecture
 
-| Slide | Project này |
+```text
+Client (form + chat)
+  → Intake          parse slots; optional LLM; VN/EN city aliases
+  → Planner         read sources/catalog.json; always include amadeus
+  → Parallel scouts Send per selected source id
+      scout_amadeus   Amadeus Flight Offers Search (or mock)
+      scout_deeplink  URL templates for Kayak, Google Flights, etc.
+  → Merger          sort by price, dedupe offers, attach OTA links
+  → Recommender     pick 3 fares + English JSON reasons (LLM or rules)
+  → SearchResponse  REST + SSE step progress
+```
+
+| Slide reference | This project |
 |---|---|
-| CrewAI | LangGraph (`backend/app/graph.py`: planner → flight_search → summarizer) |
-| DeepSeek-R1 qua Ollama | OpenAI `gpt-4o-mini`; **chưa có key thì chạy mock** |
+| CrewAI | LangGraph (`backend/app/graph.py`) |
+| DeepSeek-R1 / Ollama | OpenAI `gpt-4o-mini`; **no API key → mock LLM** |
 | Streamlit | Next.js + Tailwind (`frontend/`) |
-| Browserbase + Playwright cạo Kayak thật | **Mock data** trước (`backend/app/tools/flight_data.py`); thay hàm `search_flights` là cắm scrape thật được |
+| Browserbase + Kayak scrape | **No HTML scraping**; Amadeus API + deeplink URLs |
 
-Điểm giữ nguyên theo slide: 2 task nối tiếp (task sau dùng context task trước),
-`planning=True` tương đương (node `planner` viết kế hoạch trước), giới hạn độ
-dài text đưa vào LLM, hiển thị **tiến độ từng bước** (SSE), ghi **thời điểm lấy
-dữ liệu + link Kayak** để user tự kiểm tra, guardrail chống bịa giá.
+### Source catalog
 
-## Chạy local
+`backend/app/sources/catalog.json` lists each source (`amadeus` API plus OTA deeplinks). The planner always selects `amadeus`, adds Vietnam-focused OTAs when the route touches VN airports, and fills up to five sources by priority. Deeplink scouts only build search URLs for the user to verify prices manually.
 
-Yêu cầu: `uv`, `node`/`npm`, file `backend/.env` (copy từ `.env.example`;
-chưa có `OPENAI_API_KEY` thì chạy mock).
+### Amadeus and mock fallback
+
+Copy `backend/.env.example` to `backend/.env`:
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Chat model for intake/planner/reasons; empty → deterministic mock |
+| `OPENAI_MODEL` | Default `gpt-4o-mini` |
+| `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` | OAuth for Flight Offers Search |
+| `AMADEUS_HOSTNAME` | Default `test.api.amadeus.com` (sandbox) |
+
+If Amadeus credentials are empty or OAuth returns **401**, the backend serves **mock offers** with the same JSON shape (`price_source`: `mock`). Health at `GET /api/health` reports Amadeus readiness without calling the network.
+
+## Run locally
+
+Requirements: [uv](https://docs.astral.sh/uv/), Node.js / npm, and `backend/.env` (from `.env.example`).
 
 ```bash
-# Backend (http://localhost:8000, docs: /docs)
+# Backend — http://localhost:8000 (OpenAPI: /docs)
 cd backend && cp .env.example .env && uv sync --group dev && uv run uvicorn app.main:app --reload
 
-# Frontend (http://localhost:3000) — terminal khác
+# Frontend — http://localhost:3000 (separate terminal)
 cd frontend && npm install && npm run dev
 ```
 
-## Chạy Docker
+Run tests:
 
 ```bash
-cp backend/.env.example backend/.env   # điền OPENAI_API_KEY khi anh gửi key
+cd backend && uv run pytest
+```
+
+## Docker Compose
+
+```bash
+cp backend/.env.example backend/.env   # set OPENAI_API_KEY and Amadeus vars when ready
 docker compose up --build
 ```
 
-Mở trình duyệt tại [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The frontend waits until the backend **healthcheck** passes (`depends_on: service_healthy`). The image expects `frontend/public/` (tracked via `.gitkeep`).
 
-## Cấu trúc
+## Repository layout
 
 ```text
-backend/           FastAPI + LangGraph
-  app/main.py      REST + SSE tiến độ (GET /api/search/stream)
-  app/graph.py     3 node: planner → flight_search → summarizer
-  app/tools/       kayak.py (tạo URL) + flight_data.py (mock)
-  tests/           pytest, chạy: uv run pytest
-frontend/          Next.js + Tailwind (form, tiến độ, bảng 3 lựa chọn)
-docker-compose.yml backend:8000 + frontend:3000
+backend/
+  app/main.py           REST + SSE (GET /api/search/stream)
+  app/graph.py          LangGraph: intake → planner → scouts → merger → recommender
+  app/agents/           intake, planner, merger, recommender
+  app/tools/amadeus.py  OAuth + offers; mock on missing creds or 401
+  app/sources/          catalog.json + URL builders
+  tests/                pytest
+frontend/               Next.js UI (English copy, progress, three picks)
+docker-compose.yml      backend :8000, frontend :3000
 ```
+
+Scope: **one-way**, **1 adult**, no OTA HTML scraping.

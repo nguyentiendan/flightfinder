@@ -21,4 +21,4 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
