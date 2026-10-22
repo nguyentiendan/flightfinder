@@ -77,6 +77,15 @@ def test_incomplete_chat_need_slots():
     assert body["intake_question"]
 
 
+def test_search_stream_bad_date_422():
+    r = client.get(
+        "/api/search/stream?origin=SGN&destination=HAN&date=21/09/2026"
+    )
+    assert r.status_code == 422
+    detail = str(r.json()["detail"]).lower()
+    assert "yyyy-mm-dd" in detail or "date" in detail
+
+
 def test_search_stream_emits_planner_and_recommender():
     r = client.get("/api/search/stream?origin=SGN&destination=HAN&date=2026-09-21")
     assert r.status_code == 200, r.text

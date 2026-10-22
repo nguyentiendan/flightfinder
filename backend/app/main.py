@@ -7,6 +7,7 @@ import os
 os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
@@ -117,12 +118,11 @@ def _inputs(req: SearchRequest) -> dict:
 def _finish(state: dict) -> SearchResponse:
     need_slots = state.get("need_slots") or []
     offers = state.get("offers") or []
-    if not need_slots and not offers:
-        raise HTTPException(status_code=502, detail=NO_OFFERS_DETAIL)
     origin = state.get("origin") or ""
     destination = state.get("destination") or ""
-    if origin and destination and origin.upper() == destination.upper():
-        raise HTTPException(status_code=422, detail=DIFFER_DETAIL)
+    _check_codes(origin or None, destination or None)
+    if not need_slots and not offers:
+        raise HTTPException(status_code=502, detail=NO_OFFERS_DETAIL)
     return _to_response(state)
 
 
@@ -182,7 +182,9 @@ async def search_stream(
             message=message,
         )
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        raise HTTPException(
+            status_code=422, detail=jsonable_encoder(exc.errors())
+        ) from exc
     _check_codes(req.origin, req.destination)
 
     events: list[str] = []
