@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+node_modules/
+.next/
+backend/.env
+.DS_Store
+
+
+AI_Agents_Cam_nang_minh_hoa_2026_CyberSoft.pdf
