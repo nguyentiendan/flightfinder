@@ -1,4 +1,4 @@
-"""LLM layer. Co OPENAI_API_KEY -> gpt-4o-mini; chua co -> mock (da xac nhan voi user)."""
+"""LLM layer. With OPENAI_API_KEY, use the configured chat model; otherwise use the mock."""
 
 from .config import settings
 
@@ -10,13 +10,16 @@ def active_model_name() -> str:
 
 
 def get_chat_llm():
-    """Tra ve ChatOpenAI hoac None (mock). Chi import langchain-openai khi co key."""
+    """Return ChatOpenAI, or None when the mock is active.
+
+    Import langchain-openai only when a key is configured.
+    """
     if settings.use_mock_llm:
         return None
     from langchain_openai import ChatOpenAI
 
-    # Truyen key tu settings (doc tu backend/.env) vi OpenAI SDK
-    # chi tu doc bien moi truong he thong, khong doc file .env.
+    # Pass the key from settings (backend/.env). The OpenAI SDK reads
+    # process environment variables, not the .env file, on its own.
     return ChatOpenAI(
         model=settings.openai_model,
         temperature=0,
