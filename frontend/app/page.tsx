@@ -176,9 +176,9 @@ export default function Home() {
                 <span className="text-xs text-stone-500">fetched at {result.fetched_at}</span>
               )}
             </div>
-            {result.ota_links.length > 0 && (
+            {result.ota_links.some((link) => link.search_url) && (
               <ul className="mt-2 space-y-1">
-                {result.ota_links.map((link) => (
+                {result.ota_links.filter((link) => link.search_url).map((link) => (
                   <li key={link.source_id}>
                     <a
                       href={link.search_url}

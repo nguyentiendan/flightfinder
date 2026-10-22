@@ -88,6 +88,14 @@ export async function streamSearch(
           const line = part.split("\n").find((l) => l.startsWith("data: "));
           if (!line) continue;
           const payload = JSON.parse(line.slice(6));
+          if (payload.done === false || payload.error) {
+            reject(
+              new Error(
+                typeof payload.error === "string" ? payload.error : "Backend error",
+              ),
+            );
+            return;
+          }
           if (payload.done) {
             resolve(payload.result as SearchResult);
             return;

@@ -1,5 +1,8 @@
 """API tests for English search, health, and SSE (mock mode, no OpenAI key)."""
 
+import asyncio
+import threading
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -97,3 +100,87 @@ def test_search_stream_emits_planner_and_recommender():
     assert "Reading your request..." in body
     assert "Querying Amadeus..." in body
     assert "Merging fares..." in body
+
+
+def _empty_offer_state() -> dict:
+    return {
+        "origin": "SGN",
+        "destination": "HAN",
+        "date": "2026-09-21",
+        "need_slots": [],
+        "offers": [],
+        "recommendations": [],
+        "ota_links": [],
+        "sources_selected": ["amadeus"],
+        "errors": [],
+    }
+
+
+def test_search_stream_empty_offers_is_error_event(monkeypatch):
+    async def fake_astream(*_args, **_kwargs):
+        yield "updates", {"planner": {}}
+        yield "updates", {"recommender": {}}
+        yield "values", _empty_offer_state()
+
+    monkeypatch.setattr("app.main.graph.astream", fake_astream)
+    r = client.get("/api/search/stream?origin=SGN&destination=HAN&date=2026-09-21")
+    assert r.status_code == 200, r.text
+    assert "planner" in r.text
+    assert "recommender" in r.text
+    assert '"done": false' in r.text
+    assert "No flight offers available" in r.text
+
+
+def test_search_stream_yields_planner_before_graph_finishes(monkeypatch):
+    release = threading.Event()
+    lines: list[str] = []
+    errors: list[BaseException] = []
+
+    async def fake_astream(*_args, **_kwargs):
+        yield "updates", {"planner": {}}
+        while not release.is_set():
+            await asyncio.sleep(0.01)
+        state = _empty_offer_state()
+        state["offers"] = [{
+            "airline": "VN",
+            "departure_time": "2026-09-21T08:00",
+            "price_vnd": 1000,
+            "baggage": "",
+            "refundable": False,
+            "source_id": "amadeus",
+            "detail_url": "",
+        }]
+        state["need_slots"] = []
+        yield "values", state
+
+    monkeypatch.setattr("app.main.graph.astream", fake_astream)
+
+    def consume():
+        try:
+            with client.stream(
+                "GET",
+                "/api/search/stream?origin=SGN&destination=HAN&date=2026-09-21",
+            ) as response:
+                if response.status_code != 200:
+                    errors.append(AssertionError(response.read().decode()))
+                    return
+                for line in response.iter_lines():
+                    lines.append(line)
+                    if "planner" in line:
+                        release.set()
+        except BaseException as exc:
+            errors.append(exc)
+            release.set()
+
+    worker = threading.Thread(target=consume)
+    worker.start()
+    try:
+        worker.join(timeout=3)
+        assert any("planner" in line for line in lines), lines
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+        assert not errors, errors
+        assert any('"done": true' in line for line in lines)
+    finally:
+        release.set()
+        worker.join(timeout=2)

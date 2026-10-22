@@ -187,31 +187,40 @@ async def search_stream(
         ) from exc
     _check_codes(req.origin, req.destination)
 
-    events: list[str] = []
-    final_state: dict = {}
-    step = 0
-    async for mode, chunk in graph.astream(_inputs(req), stream_mode=["updates", "values"]):
-        if mode == "values":
-            if isinstance(chunk, dict):
-                final_state = chunk
-            continue
-        if not isinstance(chunk, dict):
-            continue
-        for node, update in chunk.items():
-            step += 1
-            payload = _step_payload(node, update if isinstance(update, dict) else {}, step)
-            events.append(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
-
-    result = _finish(final_state)
-    events.append(
-        "data: "
-        + json.dumps({"done": True, "result": result.model_dump()}, ensure_ascii=False)
-        + "\n\n"
-    )
-
     async def event_gen():
-        for event in events:
-            yield event
+        # Yield each step as astream produces it. HTTP status is already 200,
+        # so an empty-offer finish cannot become 502; that status stays on POST.
+        final_state: dict = {}
+        step = 0
+        async for mode, chunk in graph.astream(_inputs(req), stream_mode=["updates", "values"]):
+            if mode == "values":
+                if isinstance(chunk, dict):
+                    final_state = chunk
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            for node, update in chunk.items():
+                step += 1
+                payload = _step_payload(node, update if isinstance(update, dict) else {}, step)
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        try:
+            result = _finish(final_state)
+        except HTTPException as exc:
+            if exc.status_code == 502:
+                message = NO_OFFERS_DETAIL
+            else:
+                message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            yield (
+                "data: "
+                + json.dumps({"done": False, "error": message}, ensure_ascii=False)
+                + "\n\n"
+            )
+            return
+        yield (
+            "data: "
+            + json.dumps({"done": True, "result": result.model_dump()}, ensure_ascii=False)
+            + "\n\n"
+        )
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
