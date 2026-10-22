@@ -144,3 +144,11 @@ def test_llm_none_does_not_require_network():
     out = parse_intake("SGN", None, "2026-09-21", "đi hà nội", llm=None)
     assert out["destination"] == "HAN"
     assert out["need_slots"] == []
+
+
+def test_and_in_message_is_not_airport():
+    out = parse_intake(None, None, None, "Saigon and Hanoi on 2026-09-21")
+    assert out["origin"] == "SGN"
+    assert out["destination"] == "HAN"
+    assert out["date"] == "2026-09-21"
+    assert out["need_slots"] == []

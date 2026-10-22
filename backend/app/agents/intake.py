@@ -38,6 +38,10 @@ _ALIAS_KEYS = tuple(sorted(CITY_ALIASES, key=len, reverse=True))
 _ISO_DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 _DMY_DATE = re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?!\d)")
 _IATA_RE = re.compile(r"\b[A-Z]{3}\b")
+_IATA_STOPWORDS = frozenset({
+    "THE", "AND", "FOR", "FLY", "VIA", "BUT", "NOT", "YOU", "ARE", "WAS",
+    "CAN", "MAY", "OUR", "ANY", "ALL", "ONE", "TWO", "DAY",
+})
 
 _QUESTIONS = {
     "origin": "Which origin airport (IATA, e.g. SGN)?",
@@ -146,9 +150,12 @@ def _airports_in(text: str) -> list[str]:
                 found.append((idx, CITY_ALIASES[key]))
             start = idx + len(key)
     for match in _IATA_RE.finditer(upper):
+        code = match.group(0)
+        if code in _IATA_STOPWORDS:
+            continue
         idx, end = match.start(), match.end()
         if len(occupied) == len(upper) and not any(occupied[idx:end]):
-            found.append((idx, match.group(0)))
+            found.append((idx, code))
     found.sort(key=lambda item: item[0])
     return [code for _, code in found]
 
@@ -171,17 +178,21 @@ def _apply_llm(llm, text: str, origin: str, destination: str, parsed_date: str):
             "Do not invent airports or dates. "
             f"Message: {text}"
         )
-        data = _loads_json_object(_message_content(llm.invoke(prompt)))
-        origin, destination = _fill_airport(
-            origin, destination, _ground_airport(data.get("origin"), text)
-        )
-        origin, destination = _fill_airport(
-            origin, destination, _ground_airport(data.get("destination"), text)
-        )
-        if not parsed_date:
-            parsed_date = _ground_date(data.get("date"), text)
+        raw = llm.invoke(prompt)
     except Exception:
         return origin, destination, parsed_date
+    try:
+        data = _loads_json_object(_message_content(raw))
+    except (json.JSONDecodeError, ValueError):
+        return origin, destination, parsed_date
+    origin, destination = _fill_airport(
+        origin, destination, _ground_airport(data.get("origin"), text)
+    )
+    origin, destination = _fill_airport(
+        origin, destination, _ground_airport(data.get("destination"), text)
+    )
+    if not parsed_date:
+        parsed_date = _ground_date(data.get("date"), text)
     return origin, destination, parsed_date
 
 
