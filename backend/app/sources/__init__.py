@@ -37,7 +37,7 @@ def deterministic_sources(origin: str, destination: str) -> list[str]:
     destination = destination.upper()
     selected = ["amadeus"]
     catalog_ids = {e["id"] for e in load_catalog()}
-    vn = origin in VN_IATA and destination in VN_IATA
+    vn = origin in VN_IATA or destination in VN_IATA
     if vn:
         for sid in VN_PREFERRED:
             if sid in catalog_ids and sid not in selected:
