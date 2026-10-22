@@ -1,127 +1,151 @@
-"""LangGraph: 2 agents + planning node, bam slide trang 72-74.
+"""LangGraph supervisor: intake, planner, parallel scouts, merger, recommender.
 
-planner -> flight_search -> summarizer
-- planner: viet ke hoach cac buoc truoc (planning=True nhu slide).
-- flight_search (Flight Search Agent): Kayak Tool tao URL + lay top 5 chuyen.
-- summarizer (Summarization Agent): nhan context 5 chuyen, de xuat 3 lua chon
-  Re nhat / Can bang / Linh hoat, kem ly do ngan.
+Parallel ``Send`` is preferred so each selected catalog id runs its own scout.
+``ota_links`` and ``errors`` concatenate when those scouts write in parallel.
 """
 
-from typing import TypedDict
+from __future__ import annotations
+
+import operator
+from typing import Annotated, TypedDict
 
 from langgraph.graph import END, StateGraph
+from langgraph.types import Overwrite, Send
 
-from .config import settings
-from .llm import get_chat_llm
-from .tools.flight_data import SOURCE_MOCK, now_utc_iso, search_flights
+from app.agents.intake import parse_intake
+from app.agents.merger import merge_offers
+from app.agents.planner import plan_sources
+from app.agents.recommender import attach_reasons, pick_recommendations
+from app.llm import get_chat_llm
+from app.sources import build_source_url, get_source
+from app.tools.amadeus import search_amadeus_offers
+from app.tools.flight_data import now_utc_iso
 
 
 class FlightState(TypedDict, total=False):
     origin: str
     destination: str
     date: str
+    message: str
+    need_slots: list[str]
+    intake_question: str
     plan: list[str]
-    kayak_url: str
-    flights: list[dict]
+    sources_selected: list[str]
+    offers: list[dict]
+    ota_links: Annotated[list, operator.add]
     recommendations: list[dict]
     fetched_at: str
-    source: str
+    price_source: str
+    errors: Annotated[list, operator.add]
+    llm_model: str
+    scout_source_id: str
 
 
-STATIC_PLAN = [
-    "Tao URL Kayak tu diem di, diem den, ngay bay",
-    "Mo trang ket qua, lay 5 chuyen dau",
-    "Mo trang chi tiet tung chuyen de xem hang, gio, gia, hanh ly",
-    "Tom tat, so sanh va de xuat 3 lua chon",
-]
+def intake_node(state: FlightState) -> dict:
+    return parse_intake(
+        state.get("origin"),
+        state.get("destination"),
+        state.get("date"),
+        state.get("message"),
+        llm=get_chat_llm(),
+    )
 
 
 def planner_node(state: FlightState) -> dict:
-    llm = get_chat_llm()
-    if llm is None:
-        return {"plan": list(STATIC_PLAN)}
-    try:
-        resp = llm.invoke(
-            "Lap ke hoach 4 buoc tim ve may bay tu {o} den {d} ngay {dt}: "
-            "tao URL Kayak, lay 5 chuyen, doc chi tiet tung chuyen, tom tat 3 lua chon. "
-            "Tra ve 4 dong ngan gon.".format(
-                o=state["origin"], d=state["destination"], dt=state["date"]
-            )
-        )
-        lines = [ln.strip("- ").strip() for ln in str(resp.content).splitlines() if ln.strip()]
-        return {"plan": lines[:6] or list(STATIC_PLAN)}
-    except Exception:
-        return {"plan": list(STATIC_PLAN)}
+    return plan_sources(
+        state.get("origin") or "",
+        state.get("destination") or "",
+        state.get("date") or "",
+        llm=get_chat_llm(),
+    )
 
 
-def flight_search_node(state: FlightState) -> dict:
-    flights, kayak_url = search_flights(state["origin"], state["destination"], state["date"])
-    # Gioi han do dai nhu slide (text[:8000]) de khong tran ngu canh khi dua vao LLM.
-    for f in flights:
-        f["baggage"] = f["baggage"][: settings.max_page_chars]
+def scout_amadeus(state: FlightState) -> dict:
+    result = search_amadeus_offers(
+        state.get("origin") or "",
+        state.get("destination") or "",
+        state.get("date") or "",
+    )
     return {
-        "flights": flights,
-        "kayak_url": kayak_url,
+        "offers": result["offers"],
+        "price_source": result["price_source"],
+        "errors": list(result.get("errors") or []),
         "fetched_at": now_utc_iso(),
-        "source": SOURCE_MOCK,
     }
 
 
-def _pick_recommendations(flights: list[dict]) -> list[dict]:
-    by_price = sorted(flights, key=lambda f: f["price_vnd"])
-    cheapest = by_price[0]
-    with_baggage = [f for f in by_price if "20kg" in f["baggage"]]
-    balanced = with_baggage[len(with_baggage) // 2] if with_baggage else by_price[len(by_price) // 2]
-    flexible = max(flights, key=lambda f: (f["price_vnd"], f["departure_time"]))
-    return [
-        {"label": "Re nhat", "flight": cheapest,
-         "reason": "Gia thap nhat trong 5 chuyen"},
-        {"label": "Can bang", "flight": balanced,
-         "reason": "Gia hop ly, {b}".format(b=balanced["baggage"])},
-        {"label": "Linh hoat", "flight": flexible,
-         "reason": "Gio bay thuan tien, {b}".format(b=flexible["baggage"])},
-    ]
+def scout_deeplink(state: FlightState) -> dict:
+    entry = get_source(state["scout_source_id"])
+    if entry is None:
+        return {"errors": [f"Unknown source {state['scout_source_id']}."]}
+    return {
+        "ota_links": [{
+            "source_id": entry["id"],
+            "label": entry["label"],
+            "search_url": build_source_url(
+                entry,
+                state.get("origin") or "",
+                state.get("destination") or "",
+                state.get("date") or "",
+            ),
+        }]
+    }
 
 
-def summarizer_node(state: FlightState) -> dict:
-    flights = state["flights"]
-    recs = _pick_recommendations(flights)
-    # Guardrail (slide trang 75): moi gia de xuat phai co trong du lieu da lay.
-    known_prices = {f["price_vnd"] for f in flights}
-    assert all(r["flight"]["price_vnd"] in known_prices for r in recs)
+def merger_node(state: FlightState) -> dict:
+    merged = merge_offers(state.get("offers") or [], state.get("ota_links") or [])
+    # Replace the concatenated links. Returning the list plainly would append it again.
+    return {
+        "offers": merged["offers"],
+        "ota_links": Overwrite(merged["ota_links"]),
+    }
 
-    llm = get_chat_llm()
-    if llm is not None:
-        try:
-            lines = "\n".join(
-                "- {t} | {a} | {p} VND | {b}".format(
-                    t=f["departure_time"], a=f["airline"],
-                    p=f["price_vnd"], b=f["baggage"])
-                for f in flights
-            )
-            resp = llm.invoke(
-                "So sanh 5 chuyen bay sau, chi duoc dung gia co trong danh sach, "
-                "khong duoc bia them. De xuat 3 lua chon (Re nhat / Can bang / Linh hoat), "
-                "moi lua chon 1 cau ly do:\n" + lines
-            )
-            reasons = [ln.strip() for ln in str(resp.content).splitlines() if ln.strip()]
-            if len(reasons) >= 3:
-                for r, reason in zip(recs, reasons[-3:]):
-                    r["reason"] = reason[:200]
-        except Exception:
-            pass
-    return {"recommendations": recs}
+
+def recommender_node(state: FlightState) -> dict:
+    offers = state.get("offers") or []
+    recs = pick_recommendations(offers)
+    return {"recommendations": attach_reasons(recs, offers, llm=get_chat_llm())}
+
+
+def _route_after_intake(state: FlightState) -> str:
+    if state.get("need_slots"):
+        return "end"
+    return "planner"
+
+
+def _dispatch_scouts(state: FlightState) -> list[Send]:
+    sends: list[Send] = []
+    for sid in state.get("sources_selected") or []:
+        if sid == "amadeus":
+            sends.append(Send("scout_amadeus", state))
+        else:
+            sends.append(Send("scout_deeplink", {**state, "scout_source_id": sid}))
+    return sends
 
 
 def build_graph():
     builder = StateGraph(FlightState)
+    builder.add_node("intake", intake_node)
     builder.add_node("planner", planner_node)
-    builder.add_node("flight_search", flight_search_node)
-    builder.add_node("summarizer", summarizer_node)
-    builder.set_entry_point("planner")
-    builder.add_edge("planner", "flight_search")
-    builder.add_edge("flight_search", "summarizer")
-    builder.add_edge("summarizer", END)
+    builder.add_node("scout_amadeus", scout_amadeus)
+    builder.add_node("scout_deeplink", scout_deeplink)
+    builder.add_node("merger", merger_node)
+    builder.add_node("recommender", recommender_node)
+    builder.set_entry_point("intake")
+    builder.add_conditional_edges(
+        "intake",
+        _route_after_intake,
+        {"end": END, "planner": "planner"},
+    )
+    builder.add_conditional_edges(
+        "planner",
+        _dispatch_scouts,
+        ["scout_amadeus", "scout_deeplink"],
+    )
+    builder.add_edge("scout_amadeus", "merger")
+    builder.add_edge("scout_deeplink", "merger")
+    builder.add_edge("merger", "recommender")
+    builder.add_edge("recommender", END)
     return builder.compile()
 
 
