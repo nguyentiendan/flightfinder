@@ -1,7 +1,7 @@
 [
   {
     "id": "amadeus",
-    "label": "Amadeus",
+    "label": "Google Flights prices",
     "kind": "api",
     "regions": ["global"],
     "priority": 0,
@@ -13,7 +13,7 @@
     "kind": "deeplink",
     "regions": ["global", "vn"],
     "priority": 10,
-    "url_template": "https://www.kayak.com/flights/{origin}-{destination}/{date}?sort=price_a&currency=VND"
+    "url_template": "https://www.kayak.com/flights/{origin}-{destination}/{date}?sort=price_a&currency=USD"
   },
   {
     "id": "google_flights",
@@ -21,7 +21,7 @@
     "kind": "deeplink",
     "regions": ["global"],
     "priority": 20,
-    "url_template": "https://www.google.com/travel/flights?hl=en#flt={origin}.{destination}.{date}"
+    "url_template": "https://www.google.com/travel/flights?hl=en&curr=USD&q=One+way+flights+to+{destination}+from+{origin}+on+{date}"
   },
   {
     "id": "skyscanner",
@@ -29,7 +29,7 @@
     "kind": "deeplink",
     "regions": ["global"],
     "priority": 30,
-    "url_template": "https://www.skyscanner.com/transport/flights/{origin}/{destination}/{date}/?adultsv2=1&cabinclass=economy&inboundaltsenabled=false&outboundaltsenabled=false&preferdirects=false&roundtrip=false"
+    "url_template": "https://www.skyscanner.com/transport/flights/{origin_l}/{destination_l}/{date_yymmdd}/?adultsv2=1&cabinclass=economy&inboundaltsenabled=false&outboundaltsenabled=false&preferdirects=false&roundtrip=false"
   },
   {
     "id": "traveloka",
@@ -37,7 +37,7 @@
     "kind": "deeplink",
     "regions": ["vn"],
     "priority": 40,
-    "url_template": "https://www.traveloka.com/en-vn/flight/fullsearch?ap={origin}.{destination}&dt={date}.NA&ps=1.0.0&sc=ECONOMY"
+    "url_template": "https://www.traveloka.com/en-vn/flight/fullsearch?ap={origin}.{destination}&dt={date_dmy}.NA&ps=1.0.0&sc=ECONOMY"
   },
   {
     "id": "baydep",
@@ -45,7 +45,7 @@
     "kind": "deeplink",
     "regions": ["vn"],
     "priority": 50,
-    "url_template": "https://baydep.vn/ve-may-bay/{origin}-{destination}?date={date}"
+    "url_template": "https://baydep.vn/Flight?searchMode=date&tripType=OW&routes={origin}{destination}{date_ddmmyyyy}&adt=1&chd=0&inf=0"
   },
   {
     "id": "vietjet",
@@ -53,6 +53,6 @@
     "kind": "deeplink",
     "regions": ["vn"],
     "priority": 60,
-    "url_template": "https://www.vietjetair.com/en?origin={origin}&destination={destination}&departDate={date}"
+    "url_template": "https://www.vietjetair.com/en/select-flight?adultCount=1&arrivalAirport={destination}&childCount=0&currency=USD&departAirport={origin}&departDate={date}&infantCount=0&languageCode=en&tripType=oneway"
   }
 ]

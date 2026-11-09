@@ -11,7 +11,7 @@ Client (form + chat)
   → Intake          parse slots; optional LLM; VN/EN city aliases
   → Planner         read sources/catalog.json; always include amadeus
   → Parallel scouts Send per selected source id
-      scout_amadeus   Amadeus Flight Offers Search (or mock)
+      scout_amadeus   Google Flights via SerpAPI (or mock)
       scout_deeplink  URL templates for Kayak, Google Flights, etc.
   → Merger          sort by price, dedupe offers, attach OTA links
   → Recommender     pick 3 fares + English JSON reasons (LLM or rules)
@@ -37,10 +37,10 @@ Copy `backend/.env.example` to `backend/.env`:
 |---|---|
 | `OPENAI_API_KEY` | Chat model for intake/planner/reasons; empty → deterministic mock |
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
-| `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` | OAuth for Flight Offers Search |
-| `AMADEUS_HOSTNAME` | Default `test.api.amadeus.com` (sandbox) |
+| `SERPAPI_API_KEY` | Google Flights prices via [SerpAPI](https://serpapi.com/google-flights-api); empty → mock |
+| `AMADEUS_*` | Unused (self-service signup closed). Safe to leave empty. |
 
-If Amadeus credentials are empty or OAuth returns **401**, the backend serves **mock offers** with the same JSON shape (`price_source`: `mock`). Health at `GET /api/health` reports Amadeus readiness without calling the network.
+If `SERPAPI_API_KEY` is empty or SerpAPI fails, the backend serves **mock offers** (`price_source`: `mock`). Live prices use `google-flights`. Booking stays on OTA deeplinks (Kayak, Google Flights, …), not in-app. Health at `GET /api/health` reports `price_source_ready` without calling the network.
 
 ## Run locally
 

@@ -1,8 +1,9 @@
-"""Flight source catalog: Amadeus API plus OTA deeplink templates."""
+"""Flight source catalog: price API plus OTA deeplink templates."""
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 CATALOG_PATH = Path(__file__).parent / "catalog.json"
@@ -29,7 +30,20 @@ def get_source(source_id: str) -> dict | None:
 
 def build_source_url(entry: dict, origin: str, destination: str, date: str) -> str:
     template = entry.get("url_template") or ""
-    return template.format(origin=origin, destination=destination, date=date)
+    origin = (origin or "").strip().upper()
+    destination = (destination or "").strip().upper()
+    day = datetime.strptime(date, "%Y-%m-%d")
+    return template.format(
+        origin=origin,
+        destination=destination,
+        origin_l=origin.lower(),
+        destination_l=destination.lower(),
+        date=date,
+        date_dmy=day.strftime("%d-%m-%Y"),
+        date_slash=day.strftime("%d/%m/%Y"),
+        date_yymmdd=day.strftime("%y%m%d"),
+        date_ddmmyyyy=day.strftime("%d%m%Y"),
+    )
 
 
 def deterministic_sources(origin: str, destination: str) -> list[str]:

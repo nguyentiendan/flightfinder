@@ -1,6 +1,6 @@
 """HTTP schemas for search. Empty origin, destination, and date mean the chat can fill them."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -30,9 +30,11 @@ class SearchRequest(BaseModel):
         if not text:
             return None
         try:
-            datetime.strptime(text, "%Y-%m-%d")
+            parsed = datetime.strptime(text, "%Y-%m-%d").date()
         except ValueError as exc:
             raise ValueError("Departure date must be YYYY-MM-DD") from exc
+        if parsed < datetime.now(timezone.utc).date():
+            raise ValueError("Departure date must be today or later")
         return text
 
     @field_validator("message", mode="before")
@@ -71,6 +73,7 @@ class SearchResponse(BaseModel):
     date: str
     need_slots: list[str]
     intake_question: str
+    blocked: bool = False
     kayak_url: str
     flights: list[Flight]
     recommendations: list[Recommendation]

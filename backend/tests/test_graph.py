@@ -3,7 +3,7 @@ from app.graph import graph
 
 def test_graph_runs_mock_search():
     state = graph.invoke({
-        "origin": "SGN", "destination": "HAN", "date": "2026-09-21", "message": "",
+        "origin": "SGN", "destination": "HAN", "date": "2027-06-15", "message": "",
     })
     assert state.get("need_slots") in (None, [])
     assert "amadeus" in state["sources_selected"]
@@ -16,6 +16,15 @@ def test_graph_runs_mock_search():
 
 
 def test_graph_stops_when_slots_missing():
-    state = graph.invoke({"origin": "", "destination": "", "date": "", "message": "hello"})
+    state = graph.invoke({
+        "origin": "", "destination": "", "date": "", "message": "I want a cheap flight",
+    })
     assert state["need_slots"]
     assert not state.get("recommendations")
+
+
+def test_graph_stops_on_greeting():
+    state = graph.invoke({"origin": "", "destination": "", "date": "", "message": "hello"})
+    assert state.get("blocked") is True
+    assert not state.get("recommendations")
+    assert not state.get("offers")

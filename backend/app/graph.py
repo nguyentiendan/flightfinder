@@ -18,7 +18,7 @@ from app.agents.planner import plan_sources
 from app.agents.recommender import attach_reasons, pick_recommendations
 from app.llm import get_chat_llm
 from app.sources import build_source_url, get_source
-from app.tools.amadeus import search_amadeus_offers
+from app.tools.serpapi import search_serpapi_offers
 from app.tools.flight_data import now_utc_iso
 
 
@@ -29,6 +29,7 @@ class FlightState(TypedDict, total=False):
     message: str
     need_slots: list[str]
     intake_question: str
+    blocked: bool
     plan: list[str]
     sources_selected: list[str]
     offers: list[dict]
@@ -61,7 +62,7 @@ def planner_node(state: FlightState) -> dict:
 
 
 def scout_amadeus(state: FlightState) -> dict:
-    result = search_amadeus_offers(
+    result = search_serpapi_offers(
         state.get("origin") or "",
         state.get("destination") or "",
         state.get("date") or "",
@@ -108,7 +109,7 @@ def recommender_node(state: FlightState) -> dict:
 
 
 def _route_after_intake(state: FlightState) -> str:
-    if state.get("need_slots"):
+    if state.get("need_slots") or state.get("blocked"):
         return "end"
     return "planner"
 

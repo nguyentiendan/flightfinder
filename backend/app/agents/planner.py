@@ -9,8 +9,8 @@ from app.sources import VN_IATA, deterministic_sources, load_catalog
 
 DEFAULT_PLAN = [
     "Create search URLs for each selected OTA deeplink source.",
-    "Query Amadeus for live fare offers on the route.",
-    "Compare OTA deeplink results with Amadeus pricing.",
+    "Query Google Flights (SerpAPI) for live fare offers on the route.",
+    "Compare OTA deeplink results with Google Flights pricing.",
     "Recommend three fares with short reasons.",
 ]
 

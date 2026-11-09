@@ -13,9 +13,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from .graph import graph
-from .llm import active_model_name
+from .llm import active_model_name, get_chat_llm
+from .places import resolve_place
 from .schemas import Flight, OtaLink, Recommendation, SearchRequest, SearchResponse
-from .tools.amadeus import price_source_ready
+from .tools.serpapi import price_source_ready
 
 app = FastAPI(title="Multi-agent Flight Finder", version="0.1.0")
 
@@ -27,11 +28,12 @@ app.add_middleware(
 )
 
 STEP_MESSAGES = {
-    "intake": "Reading your request...",
-    "planner": "Choosing fare sources...",
-    "scout_amadeus": "Querying Amadeus...",
-    "merger": "Merging fares...",
-    "recommender": "Picking Cheapest, Balanced, and Flexible...",
+    "intake": "Intake: reading your request",
+    "planner": "Planner: choosing sources",
+    "scout_amadeus": "Scout: searching Google Flights",
+    "scout_deeplink": "Scout: building a booking link",
+    "merger": "Merger: combining offers",
+    "recommender": "Recommender: ranking flights",
 }
 
 DIFFER_DETAIL = "Origin and destination must differ"
@@ -74,6 +76,7 @@ def _to_response(state: dict) -> SearchResponse:
         date=state.get("date") or "",
         need_slots=list(state.get("need_slots") or []),
         intake_question=state.get("intake_question") or "",
+        blocked=bool(state.get("blocked")),
         kayak_url=_kayak_url(ota_links),
         flights=[_flight(offer) for offer in offers],
         recommendations=[
@@ -121,35 +124,32 @@ def _finish(state: dict) -> SearchResponse:
     origin = state.get("origin") or ""
     destination = state.get("destination") or ""
     _check_codes(origin or None, destination or None)
+    if state.get("blocked"):
+        return _to_response(state)
     if not need_slots and not offers:
         raise HTTPException(status_code=502, detail=NO_OFFERS_DETAIL)
     return _to_response(state)
 
 
-def _step_payload(node: str, update: dict, step: int) -> dict:
-    order = f"(step {step})"
+def _step_payload(node: str, update: dict) -> dict:
     if node == "scout_deeplink":
         link = next(
             (item for item in _link_list(update.get("ota_links")) if isinstance(item, dict)),
             None,
         )
-        if link and link.get("source_id"):
-            label = link.get("label") or link["source_id"]
-            return {
-                "step": link["source_id"],
-                "message": f"Building {label} search link...",
-                "order": order,
-            }
-        return {
-            "step": "scout_deeplink",
-            "message": "Building search link...",
-            "order": order,
-        }
+        step_id = (link.get("source_id") if link else None) or "scout_deeplink"
+        label = (link.get("label") if link else None) or step_id
+        return {"step": step_id, "message": f"Scout: {label} link", "order": ""}
     return {
         "step": node,
-        "message": STEP_MESSAGES.get(node, node),
-        "order": order,
+        "message": STEP_MESSAGES.get(node, "Searching..."),
+        "order": "",
     }
+
+
+@app.get("/api/places")
+def places(q: str = "") -> dict:
+    return resolve_place(q, llm=get_chat_llm())
 
 
 @app.get("/api/health")
@@ -191,7 +191,6 @@ async def search_stream(
         # Yield each step as astream produces it. HTTP status is already 200,
         # so an empty-offer finish cannot become 502; that status stays on POST.
         final_state: dict = {}
-        step = 0
         async for mode, chunk in graph.astream(_inputs(req), stream_mode=["updates", "values"]):
             if mode == "values":
                 if isinstance(chunk, dict):
@@ -200,8 +199,7 @@ async def search_stream(
             if not isinstance(chunk, dict):
                 continue
             for node, update in chunk.items():
-                step += 1
-                payload = _step_payload(node, update if isinstance(update, dict) else {}, step)
+                payload = _step_payload(node, update if isinstance(update, dict) else {})
                 yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
         try:
             result = _finish(final_state)

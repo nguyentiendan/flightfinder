@@ -33,6 +33,7 @@ export interface SearchResult {
   date: string;
   need_slots: string[];
   intake_question: string;
+  blocked: boolean;
   kayak_url: string;
   flights: Flight[];
   recommendations: Recommendation[];
@@ -112,11 +113,15 @@ export async function streamSearch(
   });
 }
 
-export function formatVND(n: number): string {
-  return `${(n / 1_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} tr`;
+const VND_PER_USD = 25_000;
+
+export function formatUSD(priceVnd: number): string {
+  const usd = priceVnd / VND_PER_USD;
+  return `US$ ${usd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
 const PRICE_SOURCE_BADGE: Record<string, string> = {
+  "google-flights": "source: Google Flights",
   "amadeus-sandbox": "source: Amadeus sandbox",
   amadeus: "source: Amadeus",
   mock: "source: mock data",
@@ -125,4 +130,19 @@ const PRICE_SOURCE_BADGE: Record<string, string> = {
 export function priceSourceBadge(priceSource: string): string | null {
   if (!priceSource) return null;
   return PRICE_SOURCE_BADGE[priceSource] ?? `source: ${priceSource}`;
+}
+
+export type PlaceAirport = { code: string; city: string };
+
+export type PlaceLookup = {
+  kind: "ambiguous" | "city" | "unknown";
+  airports: PlaceAirport[];
+};
+
+export async function lookupPlace(q: string, signal?: AbortSignal): Promise<PlaceLookup> {
+  const res = await fetch(`${API_URL}/api/places?${new URLSearchParams({ q })}`, { signal });
+  if (!res.ok) {
+    throw new Error(`Backend error: ${res.status}`);
+  }
+  return res.json() as Promise<PlaceLookup>;
 }

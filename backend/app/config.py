@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     amadeus_client_id: str | None = None
     amadeus_client_secret: str | None = None
     amadeus_hostname: str = "test.api.amadeus.com"
+    # Empty key keeps Google Flights prices on mock offers.
+    serpapi_api_key: str | None = None
     # Max characters of page content passed to the LLM (context window guardrail).
     max_page_chars: int = 8000
 
