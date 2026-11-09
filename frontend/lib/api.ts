@@ -1,6 +1,9 @@
 export interface Flight {
   airline: string;
   departure_time: string;
+  arrival_time?: string;
+  stops?: number;
+  duration_minutes?: number | null;
   price_vnd: number;
   baggage: string;
   refundable: boolean;

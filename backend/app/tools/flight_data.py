@@ -44,6 +44,9 @@ def search_flights(origin: str, destination: str, date: str) -> tuple[list[dict]
         flights.append({
             "airline": t["airline"],
             "departure_time": t["departure_time"],
+            "arrival_time": t.get("arrival_time") or "",
+            "stops": 0,
+            "duration_minutes": 125,
             "price_vnd": max(t["price_vnd"] + (jitter if i % 2 else 0), 500_000),
             "baggage": t["baggage"],
             "refundable": t["refundable"],

@@ -35,10 +35,12 @@ def test_maps_google_flights_one_way(monkeypatch):
                             {
                                 "airline": "Vietnam Airlines",
                                 "departure_airport": {"time": "2027-06-15 06:10"},
+                                "arrival_airport": {"time": "2027-06-15 13:50"},
                                 "extensions": ["Checked bag included"],
                             }
                         ],
                         "price": 1450000,
+                        "total_duration": 460,
                         "extensions": ["Checked baggage included"],
                     }
                 ],
@@ -80,6 +82,9 @@ def test_maps_google_flights_one_way(monkeypatch):
     first = out["offers"][0]
     assert first["airline"] == "Vietnam Airlines"
     assert first["departure_time"] == "06:10"
+    assert first["arrival_time"] == "13:50"
+    assert first["stops"] == 0
+    assert first["duration_minutes"] == 460
     assert first["price_vnd"] == 1_450_000
     assert first["source_id"] == "serpapi"
     assert "google.com/travel/flights" in first["detail_url"]

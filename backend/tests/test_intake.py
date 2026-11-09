@@ -155,7 +155,7 @@ def test_and_in_message_is_not_airport():
 
 
 def test_want_to_fly_does_not_steal_destination():
-    out = parse_intake(None, None, "2026-11-01", "I want to fly SaiGon to Narita")
+    out = parse_intake(None, None, "2027-11-01", "I want to fly SaiGon to Narita")
     assert out["origin"] == "SGN"
     assert out["destination"] == "NRT"
 
@@ -171,11 +171,11 @@ def test_ticket_to_vietnam_does_not_use_buy_as_destination():
 
 def test_ymd_slash_date_and_narita():
     out = parse_intake(
-        None, None, None, "I want to fly from SaiGon to Narita at 2026/11/1"
+        None, None, None, "I want to fly from SaiGon to Narita at 2027/11/1"
     )
     assert out["origin"] == "SGN"
     assert out["destination"] == "NRT"
-    assert out["date"] == "2026-11-01"
+    assert out["date"] == "2027-11-01"
     assert out["need_slots"] == []
     assert out["blocked"] is False
 
@@ -220,11 +220,11 @@ def test_rewritten_tokyo_narita_is_destination():
         None,
         None,
         None,
-        "I want to fly from Saigon to Tokyo Narita (NRT) at 2026/11/1",
+        "I want to fly from Saigon to Tokyo Narita (NRT) at 2027/11/1",
     )
     assert out["origin"] == "SGN"
     assert out["destination"] == "NRT"
-    assert out["date"] == "2026-11-01"
+    assert out["date"] == "2027-11-01"
     assert out["need_slots"] == []
 
 
@@ -233,20 +233,48 @@ def test_rewritten_delhi_code_is_origin():
         None,
         None,
         None,
-        "Please make a plan for fly from New Delhi (DEL) to Narita at 2026/11/1",
+        "Please make a plan for fly from New Delhi (DEL) to Narita at 2027/11/1",
     )
     assert out["origin"] == "DEL"
     assert out["destination"] == "NRT"
-    assert out["date"] == "2026-11-01"
+    assert out["date"] == "2027-11-01"
     assert out["need_slots"] == []
 
 
 def test_carryover_slots_plus_followup_date():
-    out = parse_intake("SGN", "NRT", None, "2026/11/1")
+    out = parse_intake("SGN", "NRT", None, "2027/11/1")
     assert out["origin"] == "SGN"
     assert out["destination"] == "NRT"
-    assert out["date"] == "2026-11-01"
+    assert out["date"] == "2027-11-01"
     assert out["blocked"] is False
+
+
+def test_refine_keeps_carryover_when_message_has_no_route():
+    out = parse_intake("SGN", "HND", "2027-11-01", "any cheaper flights?")
+    assert out["blocked"] is False
+    assert out["origin"] == "SGN"
+    assert out["destination"] == "HND"
+    assert out["date"] == "2027-11-01"
+    assert out["need_slots"] == []
+
+
+def test_refine_date_overrides_carryover_date():
+    out = parse_intake("SGN", "HND", "2027-11-01", "try 2027-11-08 instead")
+    assert out["origin"] == "SGN"
+    assert out["destination"] == "HND"
+    assert out["date"] == "2027-11-08"
+
+
+def test_new_route_in_message_overrides_carryover():
+    out = parse_intake(
+        "SGN",
+        "HND",
+        "2027-11-01",
+        "I want to fly from Hanoi to Da Nang at 2027-06-15",
+    )
+    assert out["origin"] == "HAN"
+    assert out["destination"] == "DAD"
+    assert out["date"] == "2027-06-15"
 
 
 def test_past_date_is_rejected_and_asks_again():

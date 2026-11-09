@@ -131,9 +131,20 @@ def _map_offer(item: dict, detail_url: str) -> dict | None:
     if price_vnd is None:
         return None
     first = _first_leg(item)
+    last = _last_leg(item)
+    flights = item.get("flights")
+    legs = flights if isinstance(flights, list) else []
+    duration = item.get("total_duration")
+    try:
+        duration_minutes = int(duration) if duration is not None else None
+    except (TypeError, ValueError):
+        duration_minutes = None
     return {
         "airline": str(first.get("airline") or ""),
         "departure_time": _hhmm(first),
+        "arrival_time": _hhmm(last, airport_key="arrival_airport"),
+        "stops": max(0, len(legs) - 1),
+        "duration_minutes": duration_minutes,
         "price_vnd": price_vnd,
         "baggage": BAGGAGE_INCLUDED if _bag_included(item, first) else BAGGAGE_EXCLUDED,
         "refundable": False,
@@ -149,6 +160,13 @@ def _first_leg(item: dict) -> dict:
     return {}
 
 
+def _last_leg(item: dict) -> dict:
+    flights = item.get("flights")
+    if isinstance(flights, list) and flights and isinstance(flights[-1], dict):
+        return flights[-1]
+    return {}
+
+
 def _price_vnd(raw) -> int | None:
     try:
         return int(round(float(raw)))
@@ -156,8 +174,8 @@ def _price_vnd(raw) -> int | None:
         return None
 
 
-def _hhmm(leg: dict) -> str:
-    airport = leg.get("departure_airport")
+def _hhmm(leg: dict, airport_key: str = "departure_airport") -> str:
+    airport = leg.get(airport_key)
     if not isinstance(airport, dict):
         return ""
     raw = airport.get("time")

@@ -48,6 +48,9 @@ class SearchRequest(BaseModel):
 class Flight(BaseModel):
     airline: str
     departure_time: str
+    arrival_time: str = ""
+    stops: int = 0
+    duration_minutes: int | None = None
     price_vnd: int
     baggage: str
     refundable: bool

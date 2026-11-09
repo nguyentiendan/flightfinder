@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { FlightCard } from "../components/FlightCard";
 import {
   formatUSD,
   lookupPlace,
@@ -10,6 +11,7 @@ import {
   type ProgressEvent,
   type SearchResult,
 } from "../lib/api";
+import { shiftIsoDate } from "../lib/dates";
 import {
   choiceQuestion,
   radioLabel,
@@ -22,7 +24,13 @@ import {
   slotPlaceholder,
 } from "../lib/rewriteMessage";
 
-const PLACEHOLDER = "I want to fly from SaiGon to Narita at 2026/11/1";
+const PLACEHOLDER = "I want to fly from SaiGon to Narita at 2027/11/1";
+
+const STARTERS = [
+  "I want to fly from SaiGon to Narita at 2027/11/1",
+  "Fly from Hanoi to Da Nang at 2027-06-15",
+  "Ticket from Saigon to Tokyo Haneda at 2027-12-20",
+];
 
 type SlotMemory = { origin: string; destination: string; date: string };
 
@@ -64,6 +72,9 @@ export default function Home() {
         : asking
           ? followupText(displaySlots, pendingNeed)
           : result?.intake_question ?? "";
+  const sessionReady = Boolean(
+    slotsRef.current.origin && slotsRef.current.destination && slotsRef.current.date,
+  );
 
   useEffect(() => {
     if (asking) bubbleInputRef.current?.focus();
@@ -103,7 +114,7 @@ export default function Home() {
         slotsRef.current = { ...EMPTY_SLOTS };
         setSlotAnswers({ ...EMPTY_SLOTS });
         setPendingNeed([]);
-      } else if (r.need_slots.length > 0) {
+      } else {
         slotsRef.current = {
           origin: r.origin,
           destination: r.destination,
@@ -111,11 +122,6 @@ export default function Home() {
         };
         setSlotAnswers({ ...EMPTY_SLOTS });
         setPendingNeed(r.need_slots);
-      } else {
-        slotsRef.current = { ...EMPTY_SLOTS };
-        setSlotAnswers({ ...EMPTY_SLOTS });
-        setPendingNeed([]);
-        setMessage("");
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") setError((err as Error).message);
@@ -127,6 +133,25 @@ export default function Home() {
   function onSearch(e: FormEvent) {
     e.preventDefault();
     void runSearch(message);
+  }
+
+  function onStarter(text: string) {
+    setMessage(text);
+    void runSearch(text);
+  }
+
+  function onShiftDate(days: number) {
+    const current = slotsRef.current.date || result?.date || "";
+    if (!current) return;
+    const next = shiftIsoDate(current, days);
+    slotsRef.current = { ...slotsRef.current, date: next };
+    setMessage(`try ${next} instead`);
+    void runSearch(`try ${next} instead`);
+  }
+
+  function onCheaper() {
+    setMessage("any cheaper flights?");
+    void runSearch("any cheaper flights?");
   }
 
   async function applySlotAnswer(
@@ -196,63 +221,94 @@ export default function Home() {
     void applySlotAnswer(slot, radioLabel(item), true);
   }
 
+  function bookUrl(detailUrl: string): string {
+    if (result?.kayak_url) return result.kayak_url;
+    const ota = result?.ota_links.find((link) => link.search_url)?.search_url;
+    return ota || detailUrl;
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      <header className="rounded-xl bg-amber-950 px-6 py-5 text-amber-50">
-        <h1 className="text-xl font-bold">AI Flight Finder</h1>
-        <p className="mt-1 text-sm text-amber-200">
-          A multi-agent search that ranks cheap fares first and compares OTA links.
+      <header className="rounded-3xl bg-sky-950 px-6 py-7 text-sky-50">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-sky-300">Flight finder</p>
+        <h1 className="mt-2 text-2xl font-semibold">Tell me where you want to go</h1>
+        <p className="mt-2 max-w-xl text-sm text-sky-100/80">
+          I search live fares, then you confirm the price on an airline site. Say a new city or date
+          to refine this trip — you do not have to start over.
         </p>
       </header>
 
-      <form onSubmit={onSearch} className="mt-5 rounded-xl bg-white p-5 shadow-sm">
+      <form onSubmit={onSearch} className="mt-5 rounded-3xl bg-white p-5 text-slate-900 shadow-sm">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Ask the agent</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700">Ask the agent</span>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
             placeholder={PLACEHOLDER}
-            className="w-full rounded-md border border-stone-300 px-3 py-2 placeholder:text-stone-400"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {STARTERS.map((text) => (
+            <button
+              key={text}
+              type="button"
+              onClick={() => onStarter(text)}
+              disabled={loading}
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:border-sky-300 hover:text-sky-800 disabled:opacity-50"
+            >
+              {text.replace("I want to fly from ", "").replace("Fly from ", "")}
+            </button>
+          ))}
+        </div>
         <button
           type="submit"
           disabled={loading || !message.trim()}
-          className="mt-4 rounded-md bg-amber-800 px-5 py-2 font-semibold text-white disabled:opacity-50"
+          className="mt-4 rounded-full bg-sky-600 px-5 py-2.5 font-medium text-white hover:bg-sky-500 disabled:opacity-50"
         >
           {loading ? "Searching..." : "Search flights"}
         </button>
       </form>
 
       {error && (
-        <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{error}</p>
+        <p className="mt-4 rounded-2xl bg-amber-100 px-4 py-3 text-sm text-amber-950">{error}</p>
       )}
 
       {loading && progress.length > 0 && (
-        <ul className="mt-4 rounded-xl bg-white px-5 py-4 text-sm text-stone-700 shadow-sm">
-          {progress.map((ev, index) => (
-            <li key={`${ev.step}-${index}`}>{ev.message}</li>
-          ))}
-        </ul>
+        <ol className="mt-4 space-y-2 rounded-3xl bg-white px-5 py-4 text-sm text-slate-700 shadow-sm">
+          {progress.map((ev, index) => {
+            const last = index === progress.length - 1;
+            return (
+              <li key={`${ev.step}-${index}`} className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+                    last ? "bg-sky-500" : "bg-emerald-400"
+                  }`}
+                />
+                <span className={last ? "font-medium text-slate-900" : "text-slate-500"}>
+                  {ev.message}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
       )}
 
       {result && (
         <section className="mt-4 space-y-4">
           {(asking || blocked) && agentText && (
-            <div className="rounded-xl bg-white px-5 py-4 text-sm shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-stone-500">Agent</p>
-              <p className="mt-2 whitespace-pre-line text-stone-800">{agentText}</p>
-              {choicesLoading && (
-                <p className="mt-2 text-stone-500">Looking up airports...</p>
-              )}
+            <div className="rounded-3xl bg-white px-5 py-4 text-sm text-slate-800 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-sky-700">Agent</p>
+              <p className="mt-2 whitespace-pre-line">{agentText}</p>
+              {choicesLoading && <p className="mt-2 text-slate-500">Looking up airports...</p>}
               {asking && airportOptions && (
                 <fieldset className="mt-3 space-y-2">
                   <legend className="sr-only">Airports</legend>
                   {airportOptions.map((item) => (
                     <label
                       key={item.code}
-                      className="flex cursor-pointer items-center gap-2 rounded-md border border-stone-200 px-3 py-2"
+                      className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2"
                     >
                       <input
                         type="radio"
@@ -285,13 +341,13 @@ export default function Home() {
                         : slotPlaceholder(pendingNeed[0])
                     }
                     disabled={loading || choicesLoading}
-                    className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2"
                   />
                   <button
                     type="button"
                     onClick={onBubbleSubmit}
                     disabled={loading || choicesLoading || !bubbleDraft.trim()}
-                    className="rounded-md bg-amber-800 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                    className="rounded-full bg-sky-600 px-4 py-2 font-medium text-white disabled:opacity-50"
                   >
                     Send
                   </button>
@@ -301,41 +357,55 @@ export default function Home() {
           )}
 
           {!asking && !blocked && showRoute && (
-            <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-white p-5 text-slate-900 shadow-sm">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-semibold">
-                  {result.origin} → {result.destination} · {result.date}
+                <span className="text-lg font-semibold">
+                  {displayCity(result.origin)} → {displayCity(result.destination)}
                 </span>
+                <span className="text-slate-500">{result.date}</span>
                 {badge && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                  <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
                     {badge}
                   </span>
                 )}
-                {result.fetched_at && (
-                  <span className="text-xs text-stone-500">fetched at {result.fetched_at}</span>
-                )}
               </div>
-              {result.ota_links.some((link) => link.search_url) && (
-                <ul className="mt-2 space-y-1">
-                  {result.ota_links.filter((link) => link.search_url).map((link) => (
-                    <li key={link.source_id}>
-                      <a
-                        href={link.search_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm text-sky-700 underline"
-                      >
-                        Compare on {link.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+              {sessionReady && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onShiftDate(-1)}
+                    disabled={loading}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs hover:border-sky-300"
+                  >
+                    Day before
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShiftDate(1)}
+                    disabled={loading}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs hover:border-sky-300"
+                  >
+                    Day after
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onCheaper}
+                    disabled={loading}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs hover:border-sky-300"
+                  >
+                    Any cheaper?
+                  </button>
+                </div>
               )}
+              <p className="mt-3 text-xs text-slate-500">
+                Prices are estimates (about 25,000 VND per US$). The fare you pay is on the booking
+                site.
+              </p>
             </div>
           )}
 
           {result.errors.length > 0 && (
-            <ul className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <ul className="rounded-2xl bg-amber-100 px-4 py-3 text-sm text-amber-950">
               {result.errors.map((item, index) => (
                 <li key={`${item}-${index}`}>{item}</li>
               ))}
@@ -343,39 +413,35 @@ export default function Home() {
           )}
 
           {!asking && !blocked && result.recommendations.length > 0 && (
-            <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-amber-950 text-left text-amber-50">
-                    <th className="px-4 py-2">Choice</th>
-                    <th className="px-4 py-2">Time</th>
-                    <th className="px-4 py-2">Price</th>
-                    <th className="px-4 py-2">Why</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.recommendations.map((r) => (
-                    <tr key={r.label} className="border-t border-stone-200">
-                      <td className="px-4 py-2 font-semibold">{r.label}</td>
-                      <td className="px-4 py-2">
-                        {r.flight.departure_time} · {r.flight.airline}
-                      </td>
-                      <td className="px-4 py-2">{formatUSD(r.flight.price_vnd)}</td>
-                      <td className="px-4 py-2 text-stone-600">{r.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {result.recommendations.map((r, index) => (
+                <FlightCard
+                  key={r.label}
+                  flight={r.flight}
+                  date={result.date}
+                  label={r.label}
+                  reason={r.reason}
+                  bookUrl={bookUrl(r.flight.detail_url)}
+                  featured={index === 0}
+                />
+              ))}
             </div>
           )}
 
           {!asking && !blocked && result.flights.length > 0 && (
-            <details className="rounded-xl bg-white p-5 text-sm shadow-sm">
-              <summary className="cursor-pointer font-semibold">All offers the agents read</summary>
-              <ul className="mt-2 space-y-1 text-stone-700">
+            <details className="rounded-3xl bg-white p-5 text-sm text-slate-700 shadow-sm">
+              <summary className="cursor-pointer font-medium text-slate-900">All offers</summary>
+              <ul className="mt-3 space-y-2">
                 {result.flights.map((f, i) => (
-                  <li key={`${f.airline}-${f.departure_time}-${i}`}>
-                    {result.date} · {f.departure_time} · {f.airline} · {formatUSD(f.price_vnd)} · {f.baggage}
+                  <li
+                    key={`${f.airline}-${f.departure_time}-${i}`}
+                    className="flex flex-wrap items-baseline justify-between gap-2 border-t border-slate-100 pt-2"
+                  >
+                    <span>
+                      {f.departure_time}
+                      {f.arrival_time ? ` → ${f.arrival_time}` : ""} · {f.airline} · {f.baggage}
+                    </span>
+                    <span className="font-medium text-slate-900">{formatUSD(f.price_vnd)}</span>
                   </li>
                 ))}
               </ul>

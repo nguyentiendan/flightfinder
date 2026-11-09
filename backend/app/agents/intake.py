@@ -118,12 +118,12 @@ def parse_intake(
     carryover = bool(origin_code or destination_code or parsed_date)
 
     if text:
-        if not parsed_date:
-            parsed_date = _parse_date(text)
-        if not origin_code or not destination_code:
-            origin_code, destination_code = _assign_airports(
-                text, origin_code, destination_code
-            )
+        msg_date = _parse_date(text)
+        if msg_date:
+            parsed_date = msg_date
+        origin_code, destination_code = _overlay_airports(
+            text, origin_code, destination_code
+        )
 
     found_in_message = False
     if text:
@@ -302,6 +302,27 @@ def _role_before(idx: int, marks: list[tuple[int, str]]) -> str | None:
         else:
             break
     return role
+
+
+def _overlay_airports(text: str, origin: str, destination: str) -> tuple[str, str]:
+    located = _airports_located(text)
+    if not located:
+        return origin, destination
+    unique = {code for _, code in located}
+    if len(unique) >= 2:
+        msg_origin, msg_dest = _assign_airports(text, "", "")
+        return msg_origin or origin, msg_dest or destination
+    idx, code = located[0]
+    role = _role_before(idx, _keyword_marks(text))
+    if role == "origin":
+        return code, destination
+    if role == "destination":
+        return origin, code
+    if not destination and code != origin:
+        return origin, code
+    if not origin and code != destination:
+        return code, destination
+    return origin, destination
 
 
 def _assign_airports(text: str, origin: str, destination: str) -> tuple[str, str]:

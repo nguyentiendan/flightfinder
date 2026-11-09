@@ -41,9 +41,17 @@ NO_OFFERS_DETAIL = "No flight offers available"
 
 
 def _flight(raw: dict) -> Flight:
+    duration = raw.get("duration_minutes")
+    try:
+        duration_minutes = int(duration) if duration is not None else None
+    except (TypeError, ValueError):
+        duration_minutes = None
     return Flight(
         airline=str(raw.get("airline") or ""),
         departure_time=str(raw.get("departure_time") or ""),
+        arrival_time=str(raw.get("arrival_time") or ""),
+        stops=int(raw.get("stops") or 0),
+        duration_minutes=duration_minutes,
         price_vnd=int(raw.get("price_vnd") or 0),
         baggage=str(raw.get("baggage") or ""),
         refundable=bool(raw.get("refundable")),

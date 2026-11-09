@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Flight Finder",
-  description: "A multi-agent search that ranks cheap fares first and compares OTA links.",
+  title: "Flight Finder",
+  description: "Ask for a trip, compare fares, then confirm the price on an airline site.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-stone-100 text-stone-900 antialiased">{children}</body>
+      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">{children}</body>
     </html>
   );
 }
